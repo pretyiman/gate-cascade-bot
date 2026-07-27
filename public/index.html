@@ -10,9 +10,104 @@
   <header class="topbar">
     <h1>Gate Cascade Bot</h1>
     <span id="mode-badge" class="badge">…</span>
+    <span id="user-email" class="user-email"></span>
+    <div class="topbar-actions">
+      <button id="admin-btn" class="btn" hidden>Admin</button>
+      <button id="settings-btn" class="btn">Settings</button>
+      <button id="logout-btn" class="btn">Logout</button>
+    </div>
   </header>
 
+  <section id="chart-panel" hidden>
+    <div class="chart-row">
+      <div class="chart-main">
+        <div id="tradingview-chart-container"></div>
+      </div>
+      <div class="chart-sidebar">
+        <div class="chart-sidebar-search">
+          <input type="text" id="chart-symbol-input" placeholder="Search coin" value="BTC_USDT" />
+          <button id="chart-load-btn" class="btn primary">Go</button>
+        </div>
+        <div class="chart-sidebar-label">Trending</div>
+        <div id="chart-coin-list" class="chart-coin-list">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <main>
+    <section id="admin-view" hidden>
+      <div class="section-head">
+        <h2>Admin</h2>
+        <button id="admin-back-btn" class="btn">&larr; Back to list</button>
+      </div>
+      <div id="admin-error" class="error" hidden></div>
+
+      <form id="invite-form" class="create-form">
+        <div class="form-grid">
+          <label>
+            <span>Invite new user (email)</span>
+            <input type="email" id="a-invite-email" required />
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="a-invite-admin" />
+            <span>Make them an admin too</span>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Send Invite</button>
+        </div>
+      </form>
+
+      <div id="admin-link-box" class="success" hidden></div>
+
+      <h3>Users</h3>
+      <table class="cascades-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Admin</th>
+            <th>Dry Run</th>
+            <th>API Key</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-users-tbody"></tbody>
+      </table>
+    </section>
+
+    <section id="settings-view" hidden>
+      <div class="section-head">
+        <h2>Settings</h2>
+        <button id="settings-back-btn" class="btn">&larr; Back to list</button>
+      </div>
+      <div id="settings-error" class="error" hidden></div>
+      <div id="settings-success" class="success" hidden></div>
+
+      <form id="settings-form" class="create-form">
+        <div class="form-grid">
+          <label>
+            <span>Gate.io API Key</span>
+            <input type="text" id="s-api-key" placeholder="leave blank to keep current" autocomplete="off" />
+          </label>
+          <label>
+            <span>Gate.io API Secret</span>
+            <input type="password" id="s-api-secret" placeholder="leave blank to keep current" autocomplete="off" />
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="s-dry-run" />
+            <span>Dry Run (no real orders sent to Gate.io)</span>
+          </label>
+        </div>
+        <div id="settings-key-status" class="field-label"></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Save Settings</button>
+        </div>
+      </form>
+    </section>
+
     <section id="list-view">
       <div class="section-head">
         <h2>Cascades</h2>

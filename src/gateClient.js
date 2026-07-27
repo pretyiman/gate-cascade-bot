@@ -3,7 +3,6 @@ const https = require('https');
 const { normalizeSymbol } = require('./symbol');
 
 const BASE_HOST = 'api.gateio.ws';
-const DRY_RUN = String(process.env.DRY_RUN || 'true').toLowerCase() === 'true';
 
 function sign(method, urlPath, queryString, bodyString, timestamp, apiSecret) {
   const bodyHash = crypto.createHash('sha512').update(bodyString || '').digest('hex');
@@ -12,9 +11,7 @@ function sign(method, urlPath, queryString, bodyString, timestamp, apiSecret) {
   return signature;
 }
 
-function request({ method, urlPath, queryString = '', bodyString = '' }) {
-  const apiKey = process.env.GATE_API_KEY;
-  const apiSecret = process.env.GATE_API_SECRET;
+function request({ method, urlPath, queryString = '', bodyString = '', apiKey, apiSecret }) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
 
   const headers = {
@@ -65,75 +62,94 @@ function request({ method, urlPath, queryString = '', bodyString = '' }) {
   });
 }
 
-async function getTicker(symbol) {
-  const currencyPair = normalizeSymbol(symbol);
-  const result = await request({
-    method: 'GET',
-    urlPath: '/api/v4/spot/tickers',
-    queryString: `currency_pair=${currencyPair}`,
-  });
-  const ticker = Array.isArray(result) ? result[0] : result;
-  return parseFloat(ticker.last);
+/** Public endpoint, no credentials needed - every USDT spot pair's ticker, for building a trending list. */
+async function getAllTickers() {
+  return request({ method: 'GET', urlPath: '/api/v4/spot/tickers' });
 }
 
-let dryRunOrderCounter = 0;
+/**
+ * Builds a client bound to one user's credentials/dry-run mode. Nothing is
+ * read from process.env here - each tenant gets their own key/secret/mode.
+ */
+function createClient({ apiKey, apiSecret, dryRun }) {
+  let dryRunOrderCounter = 0;
 
-async function placeOrder({ symbol, side, price, amountUsdt, amountBase }) {
-  const currencyPair = normalizeSymbol(symbol);
-  const amount = amountBase != null ? amountBase.toFixed(8) : (amountUsdt / price).toFixed(8);
-
-  const body = {
-    text: `t-${Date.now()}`,
-    currency_pair: currencyPair,
-    type: 'limit',
-    account: 'spot',
-    side,
-    amount,
-    price: price.toString(),
-    time_in_force: 'gtc',
-    iceberg: '0',
-  };
-  const bodyString = JSON.stringify(body);
-
-  if (DRY_RUN) {
-    dryRunOrderCounter += 1;
-    const fakeId = `dryrun-${Date.now()}-${dryRunOrderCounter}`;
-    console.log(`[DRY_RUN] would place ${side} order:`, body);
-    return { id: fakeId, status: 'open', currency_pair: currencyPair, amount, price: price.toString() };
+  async function getTicker(symbol) {
+    // Public endpoint, no auth needed - always real regardless of dryRun,
+    // same as before (harmless market-data read, no account access).
+    const currencyPair = normalizeSymbol(symbol);
+    const result = await request({
+      method: 'GET',
+      urlPath: '/api/v4/spot/tickers',
+      queryString: `currency_pair=${currencyPair}`,
+    });
+    const ticker = Array.isArray(result) ? result[0] : result;
+    return parseFloat(ticker.last);
   }
 
-  return request({ method: 'POST', urlPath: '/api/v4/spot/orders', bodyString });
-}
+  async function placeOrder({ symbol, side, price, amountUsdt, amountBase }) {
+    const currencyPair = normalizeSymbol(symbol);
+    const amount = amountBase != null ? amountBase.toFixed(8) : (amountUsdt / price).toFixed(8);
 
-async function getOrder(orderId, symbol) {
-  const currencyPair = normalizeSymbol(symbol);
+    const body = {
+      text: `t-${Date.now()}`,
+      currency_pair: currencyPair,
+      type: 'limit',
+      account: 'spot',
+      side,
+      amount,
+      price: price.toString(),
+      time_in_force: 'gtc',
+      iceberg: '0',
+    };
+    const bodyString = JSON.stringify(body);
 
-  if (DRY_RUN) {
-    // In dry-run, nothing ever actually trades on Gate.io, so fake orders never "fill" on
-    // their own. Tests/manual runs should drive fills explicitly (see cascadeEngine tests).
-    return { id: orderId, status: 'open', currency_pair: currencyPair };
+    if (dryRun) {
+      dryRunOrderCounter += 1;
+      const fakeId = `dryrun-${Date.now()}-${dryRunOrderCounter}`;
+      console.log(`[DRY_RUN] would place ${side} order:`, body);
+      return { id: fakeId, status: 'open', currency_pair: currencyPair, amount, price: price.toString() };
+    }
+
+    return request({ method: 'POST', urlPath: '/api/v4/spot/orders', bodyString, apiKey, apiSecret });
   }
 
-  return request({
-    method: 'GET',
-    urlPath: `/api/v4/spot/orders/${orderId}`,
-    queryString: `currency_pair=${currencyPair}`,
-  });
-}
+  async function getOrder(orderId, symbol) {
+    const currencyPair = normalizeSymbol(symbol);
 
-async function cancelOrder(orderId, symbol) {
-  const currencyPair = normalizeSymbol(symbol);
+    if (dryRun) {
+      // Nothing ever actually trades in dry-run, so fake orders never "fill" on
+      // their own - tests/manual runs should drive fills explicitly.
+      return { id: orderId, status: 'open', currency_pair: currencyPair };
+    }
 
-  if (DRY_RUN) {
-    console.log(`[DRY_RUN] would cancel order ${orderId} (${currencyPair})`);
-    return { id: orderId, status: 'cancelled' };
+    return request({
+      method: 'GET',
+      urlPath: `/api/v4/spot/orders/${orderId}`,
+      queryString: `currency_pair=${currencyPair}`,
+      apiKey,
+      apiSecret,
+    });
   }
 
-  return request({
-    method: 'DELETE',
-    urlPath: `/api/v4/spot/orders/${orderId}`,
-    queryString: `currency_pair=${currencyPair}`,
-  });
+  async function cancelOrder(orderId, symbol) {
+    const currencyPair = normalizeSymbol(symbol);
+
+    if (dryRun) {
+      console.log(`[DRY_RUN] would cancel order ${orderId} (${currencyPair})`);
+      return { id: orderId, status: 'cancelled' };
+    }
+
+    return request({
+      method: 'DELETE',
+      urlPath: `/api/v4/spot/orders/${orderId}`,
+      queryString: `currency_pair=${currencyPair}`,
+      apiKey,
+      apiSecret,
+    });
+  }
+
+  return { getTicker, placeOrder, getOrder, cancelOrder, dryRun };
 }
 
-module.exports = { getTicker, placeOrder, getOrder, cancelOrder, DRY_RUN };
+module.exports = { createClient, getAllTickers };

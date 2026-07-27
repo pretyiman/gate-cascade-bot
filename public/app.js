@@ -1,5 +1,6 @@
 const listView = document.getElementById('list-view');
 const detailView = document.getElementById('detail-view');
+const settingsView = document.getElementById('settings-view');
 const cascadesTbody = document.getElementById('cascades-tbody');
 const buyOrdersTbody = document.getElementById('buy-orders-tbody');
 const sellOrdersTbody = document.getElementById('sell-orders-tbody');
@@ -8,12 +9,34 @@ const cascadeActions = document.getElementById('cascade-actions');
 const listError = document.getElementById('list-error');
 const detailError = document.getElementById('detail-error');
 const modeBadge = document.getElementById('mode-badge');
+const userEmailEl = document.getElementById('user-email');
 const createForm = document.getElementById('create-form');
 const createError = document.getElementById('create-error');
 const newCascadeBtn = document.getElementById('new-cascade-btn');
 const cancelCreateBtn = document.getElementById('cancel-create-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const settingsBackBtn = document.getElementById('settings-back-btn');
+const logoutBtn = document.getElementById('logout-btn');
+const settingsForm = document.getElementById('settings-form');
+const settingsError = document.getElementById('settings-error');
+const settingsSuccess = document.getElementById('settings-success');
+const settingsKeyStatus = document.getElementById('settings-key-status');
+const adminView = document.getElementById('admin-view');
+const adminBtn = document.getElementById('admin-btn');
+const adminBackBtn = document.getElementById('admin-back-btn');
+const adminError = document.getElementById('admin-error');
+const adminLinkBox = document.getElementById('admin-link-box');
+const inviteForm = document.getElementById('invite-form');
+const adminUsersTbody = document.getElementById('admin-users-tbody');
+const chartPanel = document.getElementById('chart-panel');
+const chartSymbolInput = document.getElementById('chart-symbol-input');
+const chartLoadBtn = document.getElementById('chart-load-btn');
+const tradingviewContainer = document.getElementById('tradingview-chart-container');
+const chartCoinList = document.getElementById('chart-coin-list');
 
 let currentCascadeId = null;
+let tradingViewScriptLoaded = false;
+let chartPanelInitialized = false;
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -67,9 +90,183 @@ async function loadStatus() {
     const status = await api('/status');
     modeBadge.textContent = status.dryRun ? 'DRY RUN' : 'LIVE';
     modeBadge.className = 'badge ' + (status.dryRun ? 'dry-run' : 'live');
+    userEmailEl.textContent = status.email || '';
+    adminBtn.hidden = !status.isAdmin;
+    chartPanel.hidden = !status.isAdmin;
+    if (status.isAdmin && !chartPanelInitialized) {
+      chartPanelInitialized = true;
+      renderChart(chartSymbolInput.value);
+      loadTrendingCoins();
+    }
   } catch (err) {
     modeBadge.textContent = 'unknown';
   }
+}
+
+function showSettingsView() {
+  listView.hidden = true;
+  detailView.hidden = true;
+  adminView.hidden = true;
+  settingsView.hidden = false;
+  loadSettings();
+}
+
+function hideSettingsView() {
+  settingsView.hidden = true;
+  showList();
+}
+
+function showAdminView() {
+  listView.hidden = true;
+  detailView.hidden = true;
+  settingsView.hidden = true;
+  adminView.hidden = false;
+  loadAdminUsers();
+}
+
+function hideAdminView() {
+  adminView.hidden = true;
+  showList();
+}
+
+async function loadAdminUsers() {
+  adminError.hidden = true;
+  try {
+    const users = await api('/admin/users');
+    renderAdminUsers(users);
+  } catch (err) {
+    adminError.textContent = err.message;
+    adminError.hidden = false;
+  }
+}
+
+function renderAdminUsers(users) {
+  if (!users.length) {
+    adminUsersTbody.innerHTML = '<tr><td colspan="6" class="empty">No users.</td></tr>';
+    return;
+  }
+
+  adminUsersTbody.innerHTML = users
+    .map(
+      (u) => `
+        <tr>
+          <td>${u.email}</td>
+          <td>${u.isAdmin ? 'Yes' : '—'}</td>
+          <td>${u.dryRun ? 'Yes' : 'No'}</td>
+          <td>${u.apiKeyConfigured ? 'Configured' : '—'}</td>
+          <td>${fmtDate(u.createdAt)}</td>
+          <td><button class="btn" data-reset-email="${u.email}">Send reset link</button></td>
+        </tr>
+      `
+    )
+    .join('');
+
+  adminUsersTbody.querySelectorAll('button[data-reset-email]').forEach((btn) => {
+    btn.addEventListener('click', () => handleSendResetLink(btn.dataset.resetEmail));
+  });
+}
+
+function showAdminLink(label, result) {
+  adminLinkBox.innerHTML = `${label} <strong>${result.email}</strong> (expires in ${result.expiresIn}):<br>
+    <input type="text" readonly value="${result.link}" style="width:100%;margin-top:0.4rem;padding:0.4rem;font-size:0.85rem;" onclick="this.select()" />`;
+  adminLinkBox.hidden = false;
+}
+
+async function handleInviteSubmit(event) {
+  event.preventDefault();
+  adminError.hidden = true;
+  adminLinkBox.hidden = true;
+
+  const email = document.getElementById('a-invite-email').value.trim();
+  const isAdmin = document.getElementById('a-invite-admin').checked;
+
+  try {
+    const result = await api('/admin/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, isAdmin }),
+    });
+    inviteForm.reset();
+    showAdminLink('Invite link for', result);
+    await loadAdminUsers();
+  } catch (err) {
+    adminError.textContent = err.message;
+    adminError.hidden = false;
+  }
+}
+
+async function handleSendResetLink(email) {
+  adminError.hidden = true;
+  adminLinkBox.hidden = true;
+  try {
+    const result = await api('/admin/reset-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    showAdminLink('Reset link for', result);
+  } catch (err) {
+    adminError.textContent = err.message;
+    adminError.hidden = false;
+  }
+}
+
+async function loadSettings() {
+  settingsError.hidden = true;
+  settingsSuccess.hidden = true;
+  try {
+    const settings = await api('/settings');
+    document.getElementById('s-dry-run').checked = settings.dryRun;
+    settingsKeyStatus.textContent = settings.apiKeyConfigured
+      ? `API key configured (ending in ${settings.gateApiKeyLast4})`
+      : 'No API key configured yet';
+  } catch (err) {
+    settingsError.textContent = err.message;
+    settingsError.hidden = false;
+  }
+}
+
+async function handleSettingsSubmit(event) {
+  event.preventDefault();
+  settingsError.hidden = true;
+  settingsSuccess.hidden = true;
+
+  const apiKey = document.getElementById('s-api-key').value.trim();
+  const apiSecret = document.getElementById('s-api-secret').value.trim();
+  const dryRun = document.getElementById('s-dry-run').checked;
+
+  const payload = { dry_run: dryRun };
+  if (apiKey || apiSecret) {
+    if (!apiKey || !apiSecret) {
+      settingsError.textContent = 'Provide both API key and secret together';
+      settingsError.hidden = false;
+      return;
+    }
+    payload.gate_api_key = apiKey;
+    payload.gate_api_secret = apiSecret;
+  }
+
+  try {
+    await api('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    document.getElementById('s-api-key').value = '';
+    document.getElementById('s-api-secret').value = '';
+    await loadSettings();
+    await loadStatus();
+    settingsSuccess.textContent = 'Settings saved.';
+    settingsSuccess.hidden = false;
+  } catch (err) {
+    settingsError.textContent = err.message;
+    settingsError.hidden = false;
+  }
+}
+
+async function handleLogout() {
+  await fetch('/logout', { method: 'POST' });
+  window.location.href = '/login';
 }
 
 async function loadCascadeList() {
@@ -112,6 +309,8 @@ function renderCascadeList(cascades) {
 function showList() {
   currentCascadeId = null;
   detailView.hidden = true;
+  settingsView.hidden = true;
+  adminView.hidden = true;
   listView.hidden = false;
   loadCascadeList();
 }
@@ -119,6 +318,8 @@ function showList() {
 async function showDetail(id) {
   currentCascadeId = id;
   listView.hidden = true;
+  settingsView.hidden = true;
+  adminView.hidden = true;
   detailView.hidden = false;
   await loadDetail(id);
 }
@@ -394,6 +595,107 @@ createForm.addEventListener('submit', handleCreateSubmit);
 
 document.getElementById('refresh-list-btn').addEventListener('click', loadCascadeList);
 document.getElementById('back-btn').addEventListener('click', showList);
+
+settingsBtn.addEventListener('click', showSettingsView);
+settingsBackBtn.addEventListener('click', hideSettingsView);
+logoutBtn.addEventListener('click', handleLogout);
+settingsForm.addEventListener('submit', handleSettingsSubmit);
+
+adminBtn.addEventListener('click', showAdminView);
+adminBackBtn.addEventListener('click', hideAdminView);
+inviteForm.addEventListener('submit', handleInviteSubmit);
+
+function loadTradingViewScript() {
+  return new Promise((resolve, reject) => {
+    if (window.TradingView) return resolve();
+    if (tradingViewScriptLoaded) {
+      // Already injected, just wait for it to finish loading.
+      const check = setInterval(() => {
+        if (window.TradingView) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 100);
+      return;
+    }
+    tradingViewScriptLoaded = true;
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function toTradingViewSymbol(raw) {
+  const QUOTE = 'USDT';
+  let s = (raw || '').trim().toUpperCase().replace(/[\s_-]/g, '');
+  if (!s) s = 'BTC';
+  if (!s.endsWith(QUOTE)) s = `${s}${QUOTE}`;
+  return `GATEIO:${s}`;
+}
+
+async function renderChart(rawSymbol) {
+  try {
+    await loadTradingViewScript();
+  } catch (err) {
+    tradingviewContainer.innerHTML = '<div class="error">Could not load TradingView widget script.</div>';
+    return;
+  }
+  tradingviewContainer.innerHTML = '';
+  const isDark = document.documentElement.classList.contains('dark') ||
+    window.matchMedia('(prefers-color-scheme: dark)').matches;
+  new window.TradingView.widget({
+    autosize: true,
+    symbol: toTradingViewSymbol(rawSymbol),
+    interval: '15',
+    timezone: 'Etc/UTC',
+    theme: isDark ? 'dark' : 'light',
+    style: '1',
+    locale: 'en',
+    container_id: 'tradingview-chart-container',
+  });
+}
+
+async function loadTrendingCoins() {
+  try {
+    const coins = await api('/admin/market/trending');
+    renderCoinList(coins);
+  } catch (err) {
+    chartCoinList.innerHTML = `<div class="empty">${err.message}</div>`;
+  }
+}
+
+function renderCoinList(coins) {
+  if (!coins.length) {
+    chartCoinList.innerHTML = '<div class="empty">No data.</div>';
+    return;
+  }
+
+  chartCoinList.innerHTML = coins
+    .map((c) => {
+      const base = c.symbol.replace('_USDT', '');
+      const changeClass = c.changePct > 0 ? 'up' : c.changePct < 0 ? 'down' : '';
+      const changeSign = c.changePct > 0 ? '+' : '';
+      return `
+        <div class="chart-coin-item" data-symbol="${c.symbol}">
+          <span class="coin-symbol">${base}</span>
+          <span class="coin-price">${fmtNum(c.last, 4)}</span>
+          <span class="coin-change ${changeClass}">${changeSign}${fmtNum(c.changePct, 2)}%</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  chartCoinList.querySelectorAll('[data-symbol]').forEach((el) => {
+    el.addEventListener('click', () => {
+      chartSymbolInput.value = el.dataset.symbol;
+      renderChart(el.dataset.symbol);
+    });
+  });
+}
+
+chartLoadBtn.addEventListener('click', () => renderChart(chartSymbolInput.value));
 
 loadStatus();
 loadCascadeList();

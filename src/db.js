@@ -11,8 +11,36 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id                          TEXT PRIMARY KEY,
+    email                       TEXT NOT NULL UNIQUE,
+    password_hash               TEXT NOT NULL,
+    gate_api_key_encrypted      TEXT,
+    gate_api_secret_encrypted   TEXT,
+    gate_api_key_last4          TEXT,
+    dry_run                     INTEGER NOT NULL DEFAULT 1,
+    created_at                  TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    expires_at  TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+
+  CREATE TABLE IF NOT EXISTS password_set_tokens (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    expires_at  TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_password_set_tokens_user_id ON password_set_tokens(user_id);
+
   CREATE TABLE IF NOT EXISTS cascades (
     id                      TEXT PRIMARY KEY,
+    user_id                 TEXT NOT NULL REFERENCES users(id),
     symbol                  TEXT NOT NULL,
     trigger_price           REAL,
     base_price              REAL NOT NULL,
@@ -24,6 +52,7 @@ db.exec(`
     take_profit_step_pct    REAL NOT NULL,
     poll_interval_seconds   INTEGER NOT NULL DEFAULT 60,
     status                  TEXT NOT NULL DEFAULT 'pending_trigger',
+    pre_hold_status         TEXT,
     created_at              TEXT NOT NULL,
     updated_at              TEXT NOT NULL
   );
@@ -53,10 +82,11 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_cascade_levels_cascade_id ON cascade_levels(cascade_id);
   CREATE INDEX IF NOT EXISTS idx_cascades_status ON cascades(status);
+  CREATE INDEX IF NOT EXISTS idx_cascades_user_id ON cascades(user_id);
 `);
 
 try {
-  db.exec('ALTER TABLE cascades ADD COLUMN pre_hold_status TEXT');
+  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
 } catch (err) {
   if (!/duplicate column name/.test(err.message)) throw err;
 }
