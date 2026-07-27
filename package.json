@@ -1,0 +1,17 @@
+{
+  "name": "gate-cascade-bot",
+  "version": "0.1.0",
+  "description": "Cascade DCA bot for Gate.io spot trading - places buy levels sequentially (not all at once) so USDT stays free until each level is actually needed, with per-level laddered take-profit sells.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "node test/cascadeMath.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

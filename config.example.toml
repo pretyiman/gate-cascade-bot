@@ -1,0 +1,27 @@
+# Sample configuration reference for gate-cascade-bot.
+# The app itself reads its config from a .env file (see .env.example), not this
+# TOML file - this is a human-readable reference showing the same settings and
+# their shape. Copy .env.example to .env and fill in real values there; never
+# commit .env or real credentials.
+
+[gate_io]
+# Gate.io API credentials (spot trading permission required). Placeholder
+# values only - replace with your own in .env, never here.
+api_key = "your-gate-io-api-key"
+api_secret = "your-gate-io-api-secret"
+
+[database]
+# Where the SQLite database file lives.
+path = "./data/cascade.db"
+
+[runtime]
+# When true (default), no real orders are sent to Gate.io - placeOrder/cancelOrder
+# just log what they would do and fabricate fake order ids/statuses.
+dry_run = true
+
+# How often (in seconds) the scheduler checks all active cascades for trigger
+# arming, next-level placement, and order fills.
+poll_interval_seconds = 60
+
+# Local port the Express server listens on.
+port = 3000

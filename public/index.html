@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gate Cascade Bot</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Gate Cascade Bot</h1>
+    <span id="mode-badge" class="badge">…</span>
+  </header>
+
+  <main>
+    <section id="list-view">
+      <div class="section-head">
+        <h2>Cascades</h2>
+        <div class="section-head-actions">
+          <button id="new-cascade-btn" class="btn primary">+ New Cascade</button>
+          <button id="refresh-list-btn" class="btn">Refresh</button>
+        </div>
+      </div>
+      <div id="list-error" class="error" hidden></div>
+
+      <form id="create-form" class="create-form" hidden>
+        <div class="form-grid">
+          <label>
+            <span>Pair</span>
+            <input type="text" id="f-symbol" placeholder="DOGE_USDT" required />
+          </label>
+          <label>
+            <span>Trigger Price <em>(optional)</em></span>
+            <input type="number" id="f-trigger_price" step="any" placeholder="arm immediately if blank" />
+          </label>
+          <label>
+            <span>Number of Levels</span>
+            <input type="number" id="f-num_levels" step="1" min="1" required />
+          </label>
+          <label>
+            <span>Base Price (level 1 buy)</span>
+            <input type="number" id="f-base_price" step="any" required />
+          </label>
+          <label>
+            <span>Base Amount (USDT)</span>
+            <input type="number" id="f-base_amount_usdt" step="any" required />
+          </label>
+          <label>
+            <span>Price Step % (per level down)</span>
+            <input type="number" id="f-price_step_pct" step="any" required />
+          </label>
+          <label>
+            <span>Amount Step % (per level up)</span>
+            <input type="number" id="f-amount_step_pct" step="any" required />
+          </label>
+          <label>
+            <span>Take-Profit Base %</span>
+            <input type="number" id="f-take_profit_base_pct" step="any" required />
+          </label>
+          <label>
+            <span>Take-Profit Step %</span>
+            <input type="number" id="f-take_profit_step_pct" step="any" required />
+          </label>
+        </div>
+        <div id="create-error" class="error" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Create Cascade</button>
+          <button type="button" id="cancel-create-btn" class="btn">Cancel</button>
+        </div>
+      </form>
+
+      <table class="cascades-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th>Base Price</th>
+            <th>Levels</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cascades-tbody">
+          <tr><td colspan="6" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="detail-view" hidden>
+      <div class="section-head">
+        <button id="back-btn" class="btn">&larr; Back to list</button>
+      </div>
+      <div id="detail-error" class="error" hidden></div>
+
+      <div class="cascade-header" id="cascade-header"></div>
+
+      <div class="actions" id="cascade-actions"></div>
+
+      <h3>Buy Orders</h3>
+      <table class="levels-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Pair</th>
+            <th>Price</th>
+            <th>Quantity</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="buy-orders-tbody"></tbody>
+      </table>
+
+      <h3>Sell Orders</h3>
+      <table class="levels-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Pair</th>
+            <th>Price</th>
+            <th>Quantity</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="sell-orders-tbody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
