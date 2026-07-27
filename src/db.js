@@ -91,4 +91,22 @@ try {
   if (!/duplicate column name/.test(err.message)) throw err;
 }
 
+try {
+  db.exec('ALTER TABLE cascades ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0');
+} catch (err) {
+  if (!/duplicate column name/.test(err.message)) throw err;
+}
+
+try {
+  db.exec('ALTER TABLE cascade_levels ADD COLUMN trigger_order_id TEXT');
+} catch (err) {
+  if (!/duplicate column name/.test(err.message)) throw err;
+}
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_cascade_levels_buy_order_id ON cascade_levels(buy_order_id);
+  CREATE INDEX IF NOT EXISTS idx_cascade_levels_sell_order_id ON cascade_levels(sell_order_id);
+  CREATE INDEX IF NOT EXISTS idx_cascade_levels_trigger_order_id ON cascade_levels(trigger_order_id);
+`);
+
 module.exports = db;

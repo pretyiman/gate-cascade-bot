@@ -14,6 +14,12 @@ const createForm = document.getElementById('create-form');
 const createError = document.getElementById('create-error');
 const newCascadeBtn = document.getElementById('new-cascade-btn');
 const cancelCreateBtn = document.getElementById('cancel-create-btn');
+const newTemplateBtn = document.getElementById('new-template-btn');
+const templateForm = document.getElementById('template-form');
+const templateError = document.getElementById('template-error');
+const templateRowsTbody = document.getElementById('template-rows-tbody');
+const templateAddRowBtn = document.getElementById('template-add-row-btn');
+const cancelTemplateBtn = document.getElementById('cancel-template-btn');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsBackBtn = document.getElementById('settings-back-btn');
 const logoutBtn = document.getElementById('logout-btn');
@@ -21,6 +27,8 @@ const settingsForm = document.getElementById('settings-form');
 const settingsError = document.getElementById('settings-error');
 const settingsSuccess = document.getElementById('settings-success');
 const settingsKeyStatus = document.getElementById('settings-key-status');
+const settingsTestBtn = document.getElementById('settings-test-btn');
+const settingsTestResult = document.getElementById('settings-test-result');
 const adminView = document.getElementById('admin-view');
 const adminBtn = document.getElementById('admin-btn');
 const adminBackBtn = document.getElementById('admin-back-btn');
@@ -70,8 +78,7 @@ const BUY_STATUS_LABELS = {
   filled: 'Filled',
   skipped: 'Skipped',
   cancelled: 'Cancelled',
-  trigger_placed: 'Waiting for Trigger',
-  trigger_failed: 'Trigger Failed',
+  trigger_armed: 'Waiting for Trigger (Gate.io)',
 };
 
 const SELL_STATUS_LABELS = {
@@ -214,6 +221,7 @@ async function handleSendResetLink(email) {
 async function loadSettings() {
   settingsError.hidden = true;
   settingsSuccess.hidden = true;
+  settingsTestResult.hidden = true;
   try {
     const settings = await api('/settings');
     document.getElementById('s-dry-run').checked = settings.dryRun;
@@ -261,6 +269,30 @@ async function handleSettingsSubmit(event) {
   } catch (err) {
     settingsError.textContent = err.message;
     settingsError.hidden = false;
+  }
+}
+
+async function handleTestApiKey() {
+  settingsTestResult.hidden = true;
+  const apiKey = document.getElementById('s-api-key').value.trim();
+  const apiSecret = document.getElementById('s-api-secret').value.trim();
+  const payload = apiKey || apiSecret ? { gate_api_key: apiKey, gate_api_secret: apiSecret } : {};
+
+  settingsTestBtn.disabled = true;
+  try {
+    const result = await api('/settings/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    settingsTestResult.textContent = `✅ Connected — ${fmtNum(result.usdtAvailable, 2)} USDT available.`;
+    settingsTestResult.className = 'success';
+  } catch (err) {
+    settingsTestResult.textContent = `❌ ${err.message}`;
+    settingsTestResult.className = 'error';
+  } finally {
+    settingsTestResult.hidden = false;
+    settingsTestBtn.disabled = false;
   }
 }
 
@@ -336,19 +368,26 @@ async function loadDetail(id) {
 }
 
 function renderDetail(cascade) {
-  cascadeHeader.innerHTML = [
+  const fields = [
     ['Symbol', cascade.symbol],
     ['Status', statusPill(cascade.status)],
     ['Trigger Price', fmtNum(cascade.trigger_price)],
     ['Base Price', fmtNum(cascade.base_price)],
     ['Base Amount USDT', fmtNum(cascade.base_amount_usdt, 2)],
-    ['Price Step %', fmtNum(cascade.price_step_pct, 2)],
-    ['Amount Step %', fmtNum(cascade.amount_step_pct, 2)],
-    ['Take-Profit Base %', fmtNum(cascade.take_profit_base_pct, 2)],
-    ['Take-Profit Step %', fmtNum(cascade.take_profit_step_pct, 2)],
-    ['Created', fmtDate(cascade.created_at)],
-    ['Updated', fmtDate(cascade.updated_at)],
-  ]
+  ];
+  if (cascade.is_manual) {
+    fields.push(['Created Via', 'Manual Template']);
+  } else {
+    fields.push(
+      ['Price Step %', fmtNum(cascade.price_step_pct, 2)],
+      ['Amount Step %', fmtNum(cascade.amount_step_pct, 2)],
+      ['Take-Profit Base %', fmtNum(cascade.take_profit_base_pct, 2)],
+      ['Take-Profit Step %', fmtNum(cascade.take_profit_step_pct, 2)]
+    );
+  }
+  fields.push(['Created', fmtDate(cascade.created_at)], ['Updated', fmtDate(cascade.updated_at)]);
+
+  cascadeHeader.innerHTML = fields
     .map(
       ([label, value]) => `
         <div>
@@ -593,6 +632,87 @@ newCascadeBtn.addEventListener('click', showCreateForm);
 cancelCreateBtn.addEventListener('click', hideCreateForm);
 createForm.addEventListener('submit', handleCreateSubmit);
 
+function addTemplateRow() {
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td class="template-row-num"></td>
+    <td><input type="number" step="any" class="t-buy-price" required /></td>
+    <td><input type="number" step="any" class="t-amount" required /></td>
+    <td><input type="number" step="any" class="t-sell-price" required /></td>
+    <td><button type="button" class="btn danger t-remove-row">✕</button></td>
+  `;
+  row.querySelector('.t-remove-row').addEventListener('click', () => {
+    if (templateRowsTbody.querySelectorAll('tr').length > 1) {
+      row.remove();
+      renumberTemplateRows();
+    }
+  });
+  templateRowsTbody.appendChild(row);
+  renumberTemplateRows();
+}
+
+function renumberTemplateRows() {
+  templateRowsTbody.querySelectorAll('tr').forEach((row, idx) => {
+    row.querySelector('.template-row-num').textContent = idx + 1;
+  });
+}
+
+function showTemplateForm() {
+  templateError.hidden = true;
+  templateForm.reset();
+  templateRowsTbody.innerHTML = '';
+  for (let i = 0; i < 5; i++) addTemplateRow();
+  templateForm.hidden = false;
+  newTemplateBtn.hidden = true;
+}
+
+function hideTemplateForm() {
+  templateForm.hidden = true;
+  newTemplateBtn.hidden = false;
+}
+
+async function handleTemplateSubmit(event) {
+  event.preventDefault();
+  templateError.hidden = true;
+
+  const symbol = document.getElementById('t-symbol').value.trim().toUpperCase();
+  const triggerPriceRaw = document.getElementById('t-trigger_price').value;
+  const rows = [...templateRowsTbody.querySelectorAll('tr')];
+  const levels = rows.map((row) => ({
+    target_price: Number(row.querySelector('.t-buy-price').value),
+    amount_usdt: Number(row.querySelector('.t-amount').value),
+    sell_price: Number(row.querySelector('.t-sell-price').value),
+  }));
+
+  const payload = {
+    symbol,
+    trigger_price: triggerPriceRaw === '' ? null : Number(triggerPriceRaw),
+    levels,
+  };
+
+  const submitBtn = templateForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const cascade = await api('/cascades/template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    hideTemplateForm();
+    await showDetail(cascade.id);
+  } catch (err) {
+    templateError.textContent = err.message;
+    templateError.hidden = false;
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+newTemplateBtn.addEventListener('click', showTemplateForm);
+cancelTemplateBtn.addEventListener('click', hideTemplateForm);
+templateForm.addEventListener('submit', handleTemplateSubmit);
+templateAddRowBtn.addEventListener('click', addTemplateRow);
+
 document.getElementById('refresh-list-btn').addEventListener('click', loadCascadeList);
 document.getElementById('back-btn').addEventListener('click', showList);
 
@@ -600,6 +720,7 @@ settingsBtn.addEventListener('click', showSettingsView);
 settingsBackBtn.addEventListener('click', hideSettingsView);
 logoutBtn.addEventListener('click', handleLogout);
 settingsForm.addEventListener('submit', handleSettingsSubmit);
+settingsTestBtn.addEventListener('click', handleTestApiKey);
 
 adminBtn.addEventListener('click', showAdminView);
 adminBackBtn.addEventListener('click', hideAdminView);

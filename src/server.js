@@ -2,10 +2,11 @@ require('dotenv').config();
 
 const { buildApp } = require('./api');
 const { startScheduler } = require('./scheduler');
+const { startReconciler } = require('./reconciler');
 const { cleanupExpiredSessions, cleanupExpiredPasswordSetTokens } = require('./auth');
 
 const PORT = process.env.PORT || 3000;
-const DEFAULT_POLL_INTERVAL_SECONDS = Number(process.env.DEFAULT_POLL_INTERVAL_SECONDS || 60);
+const DEFAULT_POLL_INTERVAL_SECONDS = Number(process.env.DEFAULT_POLL_INTERVAL_SECONDS || 30);
 
 cleanupExpiredSessions();
 cleanupExpiredPasswordSetTokens();
@@ -20,3 +21,4 @@ app.listen(PORT, () => {
 });
 
 startScheduler({ intervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS });
+startReconciler();

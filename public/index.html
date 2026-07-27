@@ -102,8 +102,10 @@
           </label>
         </div>
         <div id="settings-key-status" class="field-label"></div>
+        <div id="settings-test-result" hidden></div>
         <div class="actions">
           <button type="submit" class="btn primary">Save Settings</button>
+          <button type="button" id="settings-test-btn" class="btn">Test</button>
         </div>
       </form>
     </section>
@@ -113,6 +115,7 @@
         <h2>Cascades</h2>
         <div class="section-head-actions">
           <button id="new-cascade-btn" class="btn primary">+ New Cascade</button>
+          <button id="new-template-btn" class="btn primary">+ Manual Template</button>
           <button id="refresh-list-btn" class="btn">Refresh</button>
         </div>
       </div>
@@ -161,6 +164,41 @@
         <div class="actions">
           <button type="submit" class="btn primary">Create Cascade</button>
           <button type="button" id="cancel-create-btn" class="btn">Cancel</button>
+        </div>
+      </form>
+
+      <form id="template-form" class="create-form" hidden>
+        <div class="form-grid">
+          <label>
+            <span>Pair</span>
+            <input type="text" id="t-symbol" placeholder="DOGE_USDT" required />
+          </label>
+          <label>
+            <span>Trigger Price <em>(optional)</em></span>
+            <input type="number" id="t-trigger_price" step="any" placeholder="arm immediately if blank" />
+          </label>
+        </div>
+
+        <table class="levels-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Buy Price</th>
+              <th>Amount (USDT)</th>
+              <th>Sell Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="template-rows-tbody"></tbody>
+        </table>
+        <div class="actions" style="margin-top:0.75rem;">
+          <button type="button" id="template-add-row-btn" class="btn">+ Add Level</button>
+        </div>
+
+        <div id="template-error" class="error" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Create Template Cascade</button>
+          <button type="button" id="cancel-template-btn" class="btn">Cancel</button>
         </div>
       </form>
 

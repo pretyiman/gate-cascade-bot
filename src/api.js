@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const db = require('./db');
 const {
   createCascade,
+  createCascadeFromLevels,
   getCascade,
   listCascades,
   cancelCascade,
@@ -60,6 +61,22 @@ function buildClientForUser(user) {
   const apiKey = decrypt(user.gate_api_key_encrypted, `${user.id}:gate_api_key`);
   const apiSecret = decrypt(user.gate_api_secret_encrypted, `${user.id}:gate_api_secret`);
   return gateClient.createClient({ apiKey, apiSecret, dryRun: isForceDryRun() || !!user.dry_run });
+}
+
+/**
+ * Eager "make sure this user's WebSocket connection is up to date" call - a
+ * no-op whenever ENABLE_GATE_WS is off (gateWs.js checks the flag itself) or
+ * the user isn't eligible. Lazy require keeps gateWs.js's ws/crypto setup out
+ * of every request when the feature is disabled (the default).
+ */
+function ensureUserWsConnection(userId) {
+  try {
+    Promise.resolve(require('./gateWs').ensureUserConnection(userId)).catch((err) => {
+      console.error(`[api] ensureUserWsConnection failed for user ${userId}:`, err.message);
+    });
+  } catch (err) {
+    console.error(`[api] ensureUserWsConnection failed for user ${userId}:`, err.message);
+  }
 }
 
 function buildApp() {
@@ -247,10 +264,37 @@ function buildApp() {
 
     const sets = Object.keys(updates).map((k) => `${k} = @${k}`).join(', ');
     db.prepare(`UPDATE users SET ${sets} WHERE id = @id`).run({ ...updates, id: req.user.id });
+    ensureUserWsConnection(req.user.id);
     res.json({ ok: true });
   });
 
-  app.post('/cascades', (req, res) => {
+  app.post('/settings/test', async (req, res) => {
+    const { gate_api_key, gate_api_secret } = req.body || {};
+    let apiKey;
+    let apiSecret;
+
+    if (gate_api_key || gate_api_secret) {
+      if (!gate_api_key || !gate_api_secret) {
+        return res.status(400).json({ error: 'Provide both API key and secret together' });
+      }
+      apiKey = gate_api_key;
+      apiSecret = gate_api_secret;
+    } else if (req.user.gate_api_key_encrypted && req.user.gate_api_secret_encrypted) {
+      apiKey = decrypt(req.user.gate_api_key_encrypted, `${req.user.id}:gate_api_key`);
+      apiSecret = decrypt(req.user.gate_api_secret_encrypted, `${req.user.id}:gate_api_secret`);
+    } else {
+      return res.status(400).json({ error: 'No API key to test - enter one above or save one first' });
+    }
+
+    try {
+      const result = await gateClient.testCredentials({ apiKey, apiSecret });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/cascades', async (req, res) => {
     const body = req.body || {};
     const missing = REQUIRED_FIELDS.filter((f) => body[f] === undefined || body[f] === null);
     if (missing.length > 0) {
@@ -258,18 +302,51 @@ function buildApp() {
     }
 
     try {
-      const id = createCascade(req.user.id, {
-        symbol: normalizeSymbol(body.symbol),
-        trigger_price: body.trigger_price ?? null,
-        base_price: Number(body.base_price),
-        base_amount_usdt: Number(body.base_amount_usdt),
-        price_step_pct: Number(body.price_step_pct),
-        amount_step_pct: Number(body.amount_step_pct),
-        num_levels: Number(body.num_levels),
-        take_profit_base_pct: Number(body.take_profit_base_pct),
-        take_profit_step_pct: Number(body.take_profit_step_pct),
-        poll_interval_seconds: body.poll_interval_seconds ? Number(body.poll_interval_seconds) : 60,
-      });
+      const id = await createCascade(
+        req.user.id,
+        {
+          symbol: normalizeSymbol(body.symbol),
+          trigger_price: body.trigger_price ?? null,
+          base_price: Number(body.base_price),
+          base_amount_usdt: Number(body.base_amount_usdt),
+          price_step_pct: Number(body.price_step_pct),
+          amount_step_pct: Number(body.amount_step_pct),
+          num_levels: Number(body.num_levels),
+          take_profit_base_pct: Number(body.take_profit_base_pct),
+          take_profit_step_pct: Number(body.take_profit_step_pct),
+          poll_interval_seconds: body.poll_interval_seconds ? Number(body.poll_interval_seconds) : 60,
+        },
+        buildClientForUser(req.user)
+      );
+      ensureUserWsConnection(req.user.id);
+      res.status(201).json(getCascade(req.user.id, id));
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Manual template: each level's exact buy price / amount / sell price, no
+  // % math - separate route, the % based /cascades route above is untouched.
+  app.post('/cascades/template', async (req, res) => {
+    const body = req.body || {};
+    if (!body.symbol) {
+      return res.status(400).json({ error: 'Pair is required' });
+    }
+    if (!Array.isArray(body.levels) || body.levels.length === 0) {
+      return res.status(400).json({ error: 'At least one level is required' });
+    }
+
+    try {
+      const id = await createCascadeFromLevels(
+        req.user.id,
+        {
+          symbol: normalizeSymbol(body.symbol),
+          trigger_price: body.trigger_price ?? null,
+          levels: body.levels,
+        },
+        buildClientForUser(req.user)
+      );
+      ensureUserWsConnection(req.user.id);
       res.status(201).json(getCascade(req.user.id, id));
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -294,15 +371,18 @@ function buildApp() {
     res.json(getCascade(req.user.id, req.params.id));
   });
 
-  app.post('/cascades/:id/hold', (req, res) => {
-    const ok = holdCascade(req.user.id, req.params.id);
+  app.post('/cascades/:id/hold', async (req, res) => {
+    const client = buildClientForUser(req.user);
+    const ok = await holdCascade(req.user.id, req.params.id, client);
     if (!ok) return res.status(400).json({ error: 'Cannot hold this cascade (not found, or not active/pending)' });
     res.json(getCascade(req.user.id, req.params.id));
   });
 
-  app.post('/cascades/:id/resume', (req, res) => {
-    const ok = resumeCascade(req.user.id, req.params.id);
+  app.post('/cascades/:id/resume', async (req, res) => {
+    const client = buildClientForUser(req.user);
+    const ok = await resumeCascade(req.user.id, req.params.id, client);
     if (!ok) return res.status(400).json({ error: 'Cannot resume this cascade (not found, or not held)' });
+    ensureUserWsConnection(req.user.id);
     res.json(getCascade(req.user.id, req.params.id));
   });
 
