@@ -112,7 +112,7 @@ main {
 }
 
 #chart-panel {
-  max-width: 1400px;
+  max-width: 1000px;
   margin: 1.5rem auto;
   padding: 0 1.5rem;
 }
@@ -351,6 +351,26 @@ tbody tr:last-child td { border-bottom: none; }
 .form-grid input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.levels-table input {
+  width: 100%;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.levels-table input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.levels-table .template-row-num {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .error {

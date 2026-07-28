@@ -45,6 +45,7 @@ const chartCoinList = document.getElementById('chart-coin-list');
 let currentCascadeId = null;
 let tradingViewScriptLoaded = false;
 let chartPanelInitialized = false;
+let isAdminUser = false;
 
 async function api(path, options) {
   const res = await fetch(path, options);
@@ -99,7 +100,8 @@ async function loadStatus() {
     modeBadge.className = 'badge ' + (status.dryRun ? 'dry-run' : 'live');
     userEmailEl.textContent = status.email || '';
     adminBtn.hidden = !status.isAdmin;
-    chartPanel.hidden = !status.isAdmin;
+    isAdminUser = status.isAdmin;
+    chartPanel.hidden = !isAdminUser;
     if (status.isAdmin && !chartPanelInitialized) {
       chartPanelInitialized = true;
       renderChart(chartSymbolInput.value);
@@ -115,6 +117,7 @@ function showSettingsView() {
   detailView.hidden = true;
   adminView.hidden = true;
   settingsView.hidden = false;
+  chartPanel.hidden = true;
   loadSettings();
 }
 
@@ -128,6 +131,7 @@ function showAdminView() {
   detailView.hidden = true;
   settingsView.hidden = true;
   adminView.hidden = false;
+  chartPanel.hidden = true;
   loadAdminUsers();
 }
 
@@ -344,6 +348,7 @@ function showList() {
   settingsView.hidden = true;
   adminView.hidden = true;
   listView.hidden = false;
+  chartPanel.hidden = !isAdminUser;
   loadCascadeList();
 }
 
@@ -353,6 +358,7 @@ async function showDetail(id) {
   settingsView.hidden = true;
   adminView.hidden = true;
   detailView.hidden = false;
+  chartPanel.hidden = !isAdminUser;
   await loadDetail(id);
 }
 
@@ -579,6 +585,7 @@ async function handleAction(id, action) {
 }
 
 function showCreateForm() {
+  hideTemplateForm();
   createError.hidden = true;
   createForm.reset();
   createForm.hidden = false;
@@ -658,6 +665,7 @@ function renumberTemplateRows() {
 }
 
 function showTemplateForm() {
+  hideCreateForm();
   templateError.hidden = true;
   templateForm.reset();
   templateRowsTbody.innerHTML = '';
