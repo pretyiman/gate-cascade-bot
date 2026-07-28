@@ -13,6 +13,7 @@
     <span id="user-email" class="user-email"></span>
     <div class="topbar-actions">
       <button id="admin-btn" class="btn" hidden>Admin</button>
+      <button id="backtest-btn" class="btn">Backtest</button>
       <button id="settings-btn" class="btn">Settings</button>
       <button id="logout-btn" class="btn">Logout</button>
     </div>
@@ -108,6 +109,192 @@
           <button type="button" id="settings-test-btn" class="btn">Test</button>
         </div>
       </form>
+    </section>
+
+    <section id="backtest-view" hidden>
+      <div class="section-head">
+        <h2>Backtests</h2>
+        <button id="backtest-back-btn" class="btn">&larr; Back to list</button>
+      </div>
+      <div id="backtest-list-error" class="error" hidden></div>
+
+      <div class="section-head-actions" style="margin-bottom: 1rem;">
+        <button id="new-backtest-pct-btn" class="btn primary">+ New Backtest %</button>
+        <button id="new-backtest-manual-btn" class="btn primary">+ New Backtest Manual</button>
+        <button id="refresh-backtests-btn" class="btn">Refresh</button>
+      </div>
+
+      <form id="backtest-pct-form" class="create-form" hidden>
+        <div class="form-grid">
+          <label>
+            <span>Pair</span>
+            <input type="text" id="bp-symbol" placeholder="BTC_USDT" required />
+          </label>
+          <label>
+            <span>Interval</span>
+            <select id="bp-interval" required>
+              <option value="1m">1m</option>
+              <option value="5m">5m</option>
+              <option value="15m">15m</option>
+              <option value="1h" selected>1h</option>
+              <option value="4h">4h</option>
+              <option value="1d">1d</option>
+            </select>
+          </label>
+          <label>
+            <span>Fee % (per side)</span>
+            <input type="number" id="bp-fee_pct" step="any" value="0.2" required />
+          </label>
+          <label>
+            <span>From</span>
+            <input type="datetime-local" id="bp-from" required />
+          </label>
+          <label>
+            <span>To</span>
+            <input type="datetime-local" id="bp-to" required />
+          </label>
+          <label>
+            <span>Trigger Price <em>(optional)</em></span>
+            <input type="number" id="bp-trigger_price" step="any" placeholder="arm immediately if blank" />
+          </label>
+          <label>
+            <span>Number of Levels</span>
+            <input type="number" id="bp-num_levels" step="1" min="1" required />
+          </label>
+          <label>
+            <span>Base Price (level 1 buy)</span>
+            <input type="number" id="bp-base_price" step="any" required />
+          </label>
+          <label>
+            <span>Base Amount (USDT)</span>
+            <input type="number" id="bp-base_amount_usdt" step="any" required />
+          </label>
+          <label>
+            <span>Price Step % (per level down)</span>
+            <input type="number" id="bp-price_step_pct" step="any" required />
+          </label>
+          <label>
+            <span>Amount Step % (per level up)</span>
+            <input type="number" id="bp-amount_step_pct" step="any" required />
+          </label>
+          <label>
+            <span>Take-Profit Base %</span>
+            <input type="number" id="bp-take_profit_base_pct" step="any" required />
+          </label>
+          <label>
+            <span>Take-Profit Step %</span>
+            <input type="number" id="bp-take_profit_step_pct" step="any" required />
+          </label>
+        </div>
+        <div id="backtest-pct-error" class="error" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Run Backtest</button>
+          <button type="button" id="cancel-backtest-pct-btn" class="btn">Cancel</button>
+        </div>
+      </form>
+
+      <form id="backtest-manual-form" class="create-form" hidden>
+        <div class="form-grid">
+          <label>
+            <span>Pair</span>
+            <input type="text" id="bm-symbol" placeholder="BTC_USDT" required />
+          </label>
+          <label>
+            <span>Interval</span>
+            <select id="bm-interval" required>
+              <option value="1m">1m</option>
+              <option value="5m">5m</option>
+              <option value="15m">15m</option>
+              <option value="1h" selected>1h</option>
+              <option value="4h">4h</option>
+              <option value="1d">1d</option>
+            </select>
+          </label>
+          <label>
+            <span>Fee % (per side)</span>
+            <input type="number" id="bm-fee_pct" step="any" value="0.2" required />
+          </label>
+          <label>
+            <span>From</span>
+            <input type="datetime-local" id="bm-from" required />
+          </label>
+          <label>
+            <span>To</span>
+            <input type="datetime-local" id="bm-to" required />
+          </label>
+          <label>
+            <span>Trigger Price <em>(optional)</em></span>
+            <input type="number" id="bm-trigger_price" step="any" placeholder="arm immediately if blank" />
+          </label>
+        </div>
+
+        <table class="levels-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Buy Price</th>
+              <th>Amount (USDT)</th>
+              <th>Sell Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="backtest-manual-rows-tbody"></tbody>
+        </table>
+        <div class="actions" style="margin-top:0.75rem;">
+          <button type="button" id="backtest-manual-add-row-btn" class="btn">+ Add Level</button>
+        </div>
+
+        <div id="backtest-manual-error" class="error" hidden></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Run Backtest</button>
+          <button type="button" id="cancel-backtest-manual-btn" class="btn">Cancel</button>
+        </div>
+      </form>
+
+      <table class="cascades-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Interval</th>
+            <th>Range</th>
+            <th>ROI %</th>
+            <th>Fills/Skips</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="backtests-tbody">
+          <tr><td colspan="7" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="backtest-detail-view" hidden>
+      <div class="section-head">
+        <button id="backtest-detail-back-btn" class="btn">&larr; Back to backtests</button>
+      </div>
+      <div id="backtest-detail-error" class="error" hidden></div>
+
+      <div class="cascade-header" id="backtest-detail-header"></div>
+
+      <div class="actions" id="backtest-detail-actions"></div>
+
+      <h3>Levels</h3>
+      <table class="levels-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Buy Price</th>
+            <th>Status</th>
+            <th>Fill Time</th>
+            <th>Sell Price</th>
+            <th>Sell Status</th>
+            <th>Sell Time</th>
+            <th>PnL (USDT)</th>
+          </tr>
+        </thead>
+        <tbody id="backtest-detail-levels-tbody"></tbody>
+      </table>
     </section>
 
     <section id="list-view">

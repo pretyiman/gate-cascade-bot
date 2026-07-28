@@ -339,7 +339,8 @@ tbody tr:last-child td { border-bottom: none; }
   font-weight: 400;
 }
 
-.form-grid input {
+.form-grid input,
+.form-grid select {
   font: inherit;
   padding: 0.45rem 0.6rem;
   border-radius: 6px;
@@ -348,7 +349,8 @@ tbody tr:last-child td { border-bottom: none; }
   color: var(--text);
 }
 
-.form-grid input:focus {
+.form-grid input:focus,
+.form-grid select:focus {
   outline: none;
   border-color: var(--accent);
 }

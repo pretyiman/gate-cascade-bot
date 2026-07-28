@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const db = require('./db');
 const gateClient = require('./gateClient');
-const { computeLevels, computeSellTarget, selectNextLevel } = require('./cascadeMath');
+const { computeLevels, computeSellTarget, selectNextLevel, normalizeManualLevels } = require('./cascadeMath');
 const { decrypt } = require('./secretsCrypto');
 const { withLock } = require('./lock');
 
@@ -180,23 +180,7 @@ async function createCascade(userId, config, client) {
  * completely unchanged; this only affects how a cascade gets created.
  */
 async function createCascadeFromLevels(userId, { symbol, trigger_price = null, levels: rawLevels }, client) {
-  if (!Array.isArray(rawLevels) || rawLevels.length === 0) {
-    throw new Error('At least one level is required');
-  }
-
-  const levels = rawLevels.map((l, idx) => {
-    const target_price = Number(l.target_price);
-    const amount_usdt = Number(l.amount_usdt);
-    const sell_price = Number(l.sell_price);
-    if (!(target_price > 0) || !(amount_usdt > 0) || !(sell_price > 0)) {
-      throw new Error(`Level ${idx + 1}: buy price, amount, and sell price must all be positive numbers`);
-    }
-    if (sell_price <= target_price) {
-      throw new Error(`Level ${idx + 1}: sell price (${sell_price}) must be higher than the buy price (${target_price})`);
-    }
-    const take_profit_pct = (sell_price / target_price - 1) * 100;
-    return { level_index: idx + 1, target_price, amount_usdt, take_profit_pct };
-  });
+  const levels = normalizeManualLevels(rawLevels);
 
   // Gate.io won't reject a buy price that's technically valid but wrong (e.g. a
   // misplaced decimal) - it just fills instantly at a bad price instead of

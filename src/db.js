@@ -109,4 +109,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cascade_levels_trigger_order_id ON cascade_levels(trigger_order_id);
 `);
 
+// Backtests are immutable, write-once reports (not a live stateful entity
+// like cascades), so config/results are JSON blobs rather than normalized
+// columns - except for a handful of summary fields hoisted as real columns
+// so the list view is a flat, fast SELECT with no per-row JSON parsing.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS backtests (
+    id                    TEXT PRIMARY KEY,
+    user_id               TEXT NOT NULL REFERENCES users(id),
+    symbol                TEXT NOT NULL,
+    interval              TEXT NOT NULL,
+    from_time             INTEGER NOT NULL,
+    to_time               INTEGER NOT NULL,
+    fee_pct               REAL NOT NULL,
+    is_manual             INTEGER NOT NULL DEFAULT 0,
+    config                TEXT NOT NULL,
+    results               TEXT NOT NULL,
+    roi_pct               REAL NOT NULL,
+    realized_pnl_usdt     REAL NOT NULL,
+    total_invested_usdt   REAL NOT NULL,
+    fills_count           INTEGER NOT NULL,
+    skips_count           INTEGER NOT NULL,
+    armed                 INTEGER NOT NULL,
+    outcome               TEXT NOT NULL,
+    created_at            TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_backtests_user_id ON backtests(user_id);
+`);
+
 module.exports = db;

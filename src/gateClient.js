@@ -87,6 +87,96 @@ async function getPublicTicker(symbol) {
   return parseFloat(ticker.last);
 }
 
+/**
+ * Whitelist of interval strings exposed to backtest requests, each mapped to
+ * its length in seconds - used both for request validation and to bound
+ * pagination/candle-count math. Deliberately a small, common subset rather
+ * than every interval Gate.io's candlestick endpoint might accept.
+ */
+const INTERVAL_SECONDS = {
+  '1m': 60,
+  '5m': 300,
+  '15m': 900,
+  '1h': 3600,
+  '4h': 14400,
+  '1d': 86400,
+};
+
+const MAX_CANDLES_PER_BACKTEST = 6000;
+const MAX_CANDLES_PER_REQUEST = 1000; // Gate.io's own cap per /spot/candlesticks call
+
+/**
+ * Maps one raw candle array to a named object. Kept as its own tiny, pure,
+ * exported function specifically because close/high/low/open sit right next
+ * to each other positionally in the raw array (an easy transpose bug) -
+ * field order confirmed against a live request, not docs:
+ * [time(unix s), quote_volume, close, high, low, open, base_volume, closed_bool].
+ */
+function parseCandlestick(raw) {
+  const [time, , close, high, low, open] = raw;
+  return {
+    time: Number(time),
+    open: parseFloat(open),
+    high: parseFloat(high),
+    low: parseFloat(low),
+    close: parseFloat(close),
+  };
+}
+
+/**
+ * Public endpoint, no credentials needed - historical OHLC candles for a
+ * pair, used by the backtester. Paginates past Gate.io's 1000-candles-per-
+ * request cap: `from` advances to the last candle's time + intervalSeconds
+ * each loop until it reaches `to` or a page comes back empty, with a
+ * malformed-response guard (break if `from` fails to advance). Dedupes by
+ * timestamp in case a boundary candle is returned in two consecutive pages.
+ * Callers must enforce MAX_CANDLES_PER_BACKTEST themselves before calling
+ * this (kept as a separate check so the validation error can be specific
+ * about interval/range rather than this function silently truncating).
+ */
+async function getCandlesticks({ symbol, interval, from, to }) {
+  if (!INTERVAL_SECONDS[interval]) {
+    throw new Error(`Unsupported interval "${interval}" - must be one of ${Object.keys(INTERVAL_SECONDS).join(', ')}`);
+  }
+  const currencyPair = normalizeSymbol(symbol);
+  const intervalSeconds = INTERVAL_SECONDS[interval];
+
+  const byTime = new Map();
+  let cursor = from;
+  let iterations = 0;
+  const maxIterations = Math.ceil(MAX_CANDLES_PER_BACKTEST / MAX_CANDLES_PER_REQUEST) + 2;
+  // Gate.io rejects the whole request with a 400 if from->to implies more
+  // than 1000 points, even with `limit` set - so each page's own `to` must
+  // stay bounded too, not just the cursor (`from`) advancing.
+  const maxSpanSeconds = (MAX_CANDLES_PER_REQUEST - 1) * intervalSeconds;
+
+  while (cursor < to && iterations < maxIterations) {
+    iterations += 1;
+    const pageTo = Math.min(to, cursor + maxSpanSeconds);
+    const raw = await request({
+      method: 'GET',
+      urlPath: '/api/v4/spot/candlesticks',
+      queryString: `currency_pair=${currencyPair}&interval=${interval}&from=${cursor}&to=${pageTo}&limit=${MAX_CANDLES_PER_REQUEST}`,
+    });
+    if (!Array.isArray(raw) || raw.length === 0) {
+      cursor = pageTo + intervalSeconds; // no data this page - advance past it, don't loop forever
+      continue;
+    }
+
+    const parsed = raw.map(parseCandlestick);
+    for (const candle of parsed) {
+      byTime.set(candle.time, candle);
+    }
+
+    const lastTime = parsed[parsed.length - 1].time;
+    const nextCursor = lastTime + intervalSeconds;
+    if (nextCursor <= cursor) break; // malformed-response guard - cursor must always advance
+    cursor = nextCursor;
+  }
+
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
+}
+
 const pairPrecisionCache = new Map();
 
 /**
@@ -319,4 +409,8 @@ module.exports = {
   getPairPrecision,
   computeReactiveTriggerPrice,
   testCredentials,
+  INTERVAL_SECONDS,
+  MAX_CANDLES_PER_BACKTEST,
+  parseCandlestick,
+  getCandlesticks,
 };

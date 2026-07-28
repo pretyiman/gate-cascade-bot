@@ -36,6 +36,27 @@ const adminError = document.getElementById('admin-error');
 const adminLinkBox = document.getElementById('admin-link-box');
 const inviteForm = document.getElementById('invite-form');
 const adminUsersTbody = document.getElementById('admin-users-tbody');
+const backtestBtn = document.getElementById('backtest-btn');
+const backtestView = document.getElementById('backtest-view');
+const backtestBackBtn = document.getElementById('backtest-back-btn');
+const backtestListError = document.getElementById('backtest-list-error');
+const backtestsTbody = document.getElementById('backtests-tbody');
+const newBacktestPctBtn = document.getElementById('new-backtest-pct-btn');
+const newBacktestManualBtn = document.getElementById('new-backtest-manual-btn');
+const backtestPctForm = document.getElementById('backtest-pct-form');
+const backtestPctError = document.getElementById('backtest-pct-error');
+const cancelBacktestPctBtn = document.getElementById('cancel-backtest-pct-btn');
+const backtestManualForm = document.getElementById('backtest-manual-form');
+const backtestManualError = document.getElementById('backtest-manual-error');
+const backtestManualRowsTbody = document.getElementById('backtest-manual-rows-tbody');
+const backtestManualAddRowBtn = document.getElementById('backtest-manual-add-row-btn');
+const cancelBacktestManualBtn = document.getElementById('cancel-backtest-manual-btn');
+const backtestDetailView = document.getElementById('backtest-detail-view');
+const backtestDetailBackBtn = document.getElementById('backtest-detail-back-btn');
+const backtestDetailError = document.getElementById('backtest-detail-error');
+const backtestDetailHeader = document.getElementById('backtest-detail-header');
+const backtestDetailActions = document.getElementById('backtest-detail-actions');
+const backtestDetailLevelsTbody = document.getElementById('backtest-detail-levels-tbody');
 const chartPanel = document.getElementById('chart-panel');
 const chartSymbolInput = document.getElementById('chart-symbol-input');
 const chartLoadBtn = document.getElementById('chart-load-btn');
@@ -43,6 +64,7 @@ const tradingviewContainer = document.getElementById('tradingview-chart-containe
 const chartCoinList = document.getElementById('chart-coin-list');
 
 let currentCascadeId = null;
+let currentBacktestId = null;
 let tradingViewScriptLoaded = false;
 let chartPanelInitialized = false;
 let isAdminUser = false;
@@ -116,6 +138,8 @@ function showSettingsView() {
   listView.hidden = true;
   detailView.hidden = true;
   adminView.hidden = true;
+  backtestView.hidden = true;
+  backtestDetailView.hidden = true;
   settingsView.hidden = false;
   chartPanel.hidden = true;
   loadSettings();
@@ -130,6 +154,8 @@ function showAdminView() {
   listView.hidden = true;
   detailView.hidden = true;
   settingsView.hidden = true;
+  backtestView.hidden = true;
+  backtestDetailView.hidden = true;
   adminView.hidden = false;
   chartPanel.hidden = true;
   loadAdminUsers();
@@ -347,6 +373,8 @@ function showList() {
   detailView.hidden = true;
   settingsView.hidden = true;
   adminView.hidden = true;
+  backtestView.hidden = true;
+  backtestDetailView.hidden = true;
   listView.hidden = false;
   chartPanel.hidden = !isAdminUser;
   loadCascadeList();
@@ -357,6 +385,8 @@ async function showDetail(id) {
   listView.hidden = true;
   settingsView.hidden = true;
   adminView.hidden = true;
+  backtestView.hidden = true;
+  backtestDetailView.hidden = true;
   detailView.hidden = false;
   chartPanel.hidden = !isAdminUser;
   await loadDetail(id);
@@ -733,6 +763,345 @@ settingsTestBtn.addEventListener('click', handleTestApiKey);
 adminBtn.addEventListener('click', showAdminView);
 adminBackBtn.addEventListener('click', hideAdminView);
 inviteForm.addEventListener('submit', handleInviteSubmit);
+
+// --- Backtests ---------------------------------------------------------
+
+function toUnixSeconds(datetimeLocalValue) {
+  return Math.floor(new Date(datetimeLocalValue).getTime() / 1000);
+}
+
+/** Formats a Date as a datetime-local input value ("YYYY-MM-DDTHH:mm") in local time, for prefilling sensible defaults. */
+function toDatetimeLocalValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function showBacktestView() {
+  listView.hidden = true;
+  detailView.hidden = true;
+  settingsView.hidden = true;
+  adminView.hidden = true;
+  backtestDetailView.hidden = true;
+  backtestView.hidden = false;
+  chartPanel.hidden = true;
+  loadBacktestList();
+}
+
+function hideBacktestView() {
+  backtestView.hidden = true;
+  showList();
+}
+
+async function loadBacktestList() {
+  backtestListError.hidden = true;
+  try {
+    const backtests = await api('/backtests');
+    renderBacktestList(backtests);
+  } catch (err) {
+    backtestListError.textContent = err.message;
+    backtestListError.hidden = false;
+  }
+}
+
+function outcomeLabel(bt) {
+  if (bt.outcome === 'never_armed') return 'Never Armed';
+  if (bt.outcome === 'no_data') return 'No Data';
+  return `${fmtNum(bt.roi_pct, 2)}%`;
+}
+
+function renderBacktestList(backtests) {
+  if (!backtests.length) {
+    backtestsTbody.innerHTML = '<tr><td colspan="7" class="empty">No backtests yet.</td></tr>';
+    return;
+  }
+
+  backtestsTbody.innerHTML = backtests
+    .map(
+      (bt) => `
+        <tr data-id="${bt.id}">
+          <td>${bt.symbol}</td>
+          <td>${bt.interval}</td>
+          <td>${fmtDate(new Date(bt.from_time * 1000).toISOString())} &rarr; ${fmtDate(new Date(bt.to_time * 1000).toISOString())}</td>
+          <td>${outcomeLabel(bt)}</td>
+          <td>${bt.fills_count}/${bt.skips_count}</td>
+          <td>${fmtDate(bt.created_at)}</td>
+          <td><button class="btn danger" data-delete-id="${bt.id}">Delete</button></td>
+        </tr>
+      `
+    )
+    .join('');
+
+  backtestsTbody.querySelectorAll('tr[data-id]').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('[data-delete-id]')) return;
+      showBacktestDetail(row.dataset.id);
+    });
+  });
+  backtestsTbody.querySelectorAll('[data-delete-id]').forEach((btn) => {
+    btn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (!confirm('Delete this backtest?')) return;
+      try {
+        await api(`/backtests/${btn.dataset.deleteId}`, { method: 'DELETE' });
+        await loadBacktestList();
+      } catch (err) {
+        backtestListError.textContent = err.message;
+        backtestListError.hidden = false;
+      }
+    });
+  });
+}
+
+async function showBacktestDetail(id) {
+  currentBacktestId = id;
+  backtestView.hidden = true;
+  backtestDetailView.hidden = false;
+  chartPanel.hidden = true;
+  await loadBacktestDetail(id);
+}
+
+function hideBacktestDetailView() {
+  currentBacktestId = null;
+  backtestDetailView.hidden = true;
+  showBacktestView();
+}
+
+async function loadBacktestDetail(id) {
+  backtestDetailError.hidden = true;
+  try {
+    const bt = await api(`/backtests/${id}`);
+    renderBacktestDetail(bt);
+  } catch (err) {
+    backtestDetailError.textContent = err.message;
+    backtestDetailError.hidden = false;
+  }
+}
+
+function renderBacktestDetail(bt) {
+  const s = bt.results.summary;
+  const fields = [
+    ['Symbol', bt.symbol],
+    ['Interval', bt.interval],
+    ['From', fmtDate(new Date(bt.from_time * 1000).toISOString())],
+    ['To', fmtDate(new Date(bt.to_time * 1000).toISOString())],
+    ['Fee %', fmtNum(bt.fee_pct, 2)],
+    ['Outcome', outcomeLabel(bt)],
+  ];
+  if (bt.results.armed && bt.results.armedAt) {
+    fields.push(['Armed At', `${fmtDate(new Date(bt.results.armedAt.time * 1000).toISOString())} @ ${fmtNum(bt.results.armedAt.price)}`]);
+  }
+  if (bt.is_manual) {
+    fields.push(['Created Via', 'Manual Template']);
+  } else {
+    fields.push(
+      ['Base Price', fmtNum(bt.config.base_price)],
+      ['Price Step %', fmtNum(bt.config.price_step_pct, 2)],
+      ['Amount Step %', fmtNum(bt.config.amount_step_pct, 2)]
+    );
+  }
+  fields.push(
+    ['ROI %', fmtNum(s.roiPct, 2) + '%'],
+    ['Realized PnL (USDT)', fmtNum(s.realizedPnlUsdt, 4)],
+    ['Unrealized PnL (USDT)', fmtNum(s.unrealizedPnlUsdt, 4)],
+    ['Total Invested (USDT)', fmtNum(s.totalInvestedUsdt, 2)],
+    ['Fills / Skips', `${s.fillsCount} / ${s.skipsCount}`],
+    ['Created', fmtDate(bt.created_at)]
+  );
+
+  backtestDetailHeader.innerHTML = fields
+    .map(
+      ([label, value]) => `
+        <div>
+          <div class="field-label">${label}</div>
+          <div class="field-value">${value}</div>
+        </div>
+      `
+    )
+    .join('');
+
+  backtestDetailActions.innerHTML = `<button class="btn danger" id="backtest-detail-delete-btn">Delete Backtest</button>`;
+  document.getElementById('backtest-detail-delete-btn').addEventListener('click', async () => {
+    if (!confirm('Delete this backtest?')) return;
+    try {
+      await api(`/backtests/${bt.id}`, { method: 'DELETE' });
+      hideBacktestDetailView();
+    } catch (err) {
+      backtestDetailError.textContent = err.message;
+      backtestDetailError.hidden = false;
+    }
+  });
+
+  backtestDetailLevelsTbody.innerHTML = bt.results.levels
+    .map(
+      (l) => `
+        <tr>
+          <td>${l.level_index}</td>
+          <td>${fmtNum(l.target_price)}</td>
+          <td>${statusPill(l.status, BUY_STATUS_LABELS)}${l.skip_reason ? ` <span class="field-label">(${l.skip_reason.replace(/_/g, ' ')})</span>` : ''}</td>
+          <td>${l.fill_time ? fmtDate(new Date(l.fill_time * 1000).toISOString()) : '—'}</td>
+          <td>${l.sell_price != null ? fmtNum(l.sell_price) : '—'}</td>
+          <td>${statusPill(l.sell_status, SELL_STATUS_LABELS)}</td>
+          <td>${l.sell_time ? fmtDate(new Date(l.sell_time * 1000).toISOString()) : '—'}</td>
+          <td>${l.pnl_usdt != null ? fmtNum(l.pnl_usdt, 4) : '—'}</td>
+        </tr>
+      `
+    )
+    .join('');
+}
+
+function showBacktestPctForm() {
+  hideBacktestManualForm();
+  backtestPctError.hidden = true;
+  backtestPctForm.reset();
+  document.getElementById('bp-to').value = toDatetimeLocalValue(new Date());
+  document.getElementById('bp-from').value = toDatetimeLocalValue(new Date(Date.now() - 7 * 24 * 3600 * 1000));
+  document.getElementById('bp-fee_pct').value = 0.2;
+  backtestPctForm.hidden = false;
+  newBacktestPctBtn.hidden = true;
+}
+
+function hideBacktestPctForm() {
+  backtestPctForm.hidden = true;
+  newBacktestPctBtn.hidden = false;
+}
+
+function addBacktestManualRow() {
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td class="template-row-num"></td>
+    <td><input type="number" step="any" class="bm-buy-price" required /></td>
+    <td><input type="number" step="any" class="bm-amount" required /></td>
+    <td><input type="number" step="any" class="bm-sell-price" required /></td>
+    <td><button type="button" class="btn danger bm-remove-row">✕</button></td>
+  `;
+  row.querySelector('.bm-remove-row').addEventListener('click', () => {
+    if (backtestManualRowsTbody.querySelectorAll('tr').length > 1) {
+      row.remove();
+      renumberBacktestManualRows();
+    }
+  });
+  backtestManualRowsTbody.appendChild(row);
+  renumberBacktestManualRows();
+}
+
+function renumberBacktestManualRows() {
+  backtestManualRowsTbody.querySelectorAll('tr').forEach((row, idx) => {
+    row.querySelector('.template-row-num').textContent = idx + 1;
+  });
+}
+
+function showBacktestManualForm() {
+  hideBacktestPctForm();
+  backtestManualError.hidden = true;
+  backtestManualForm.reset();
+  document.getElementById('bm-to').value = toDatetimeLocalValue(new Date());
+  document.getElementById('bm-from').value = toDatetimeLocalValue(new Date(Date.now() - 7 * 24 * 3600 * 1000));
+  document.getElementById('bm-fee_pct').value = 0.2;
+  backtestManualRowsTbody.innerHTML = '';
+  for (let i = 0; i < 5; i++) addBacktestManualRow();
+  backtestManualForm.hidden = false;
+  newBacktestManualBtn.hidden = true;
+}
+
+function hideBacktestManualForm() {
+  backtestManualForm.hidden = true;
+  newBacktestManualBtn.hidden = false;
+}
+
+async function handleBacktestPctSubmit(event) {
+  event.preventDefault();
+  backtestPctError.hidden = true;
+
+  const triggerPriceRaw = document.getElementById('bp-trigger_price').value;
+  const payload = {
+    symbol: document.getElementById('bp-symbol').value.trim().toUpperCase(),
+    interval: document.getElementById('bp-interval').value,
+    from_time: toUnixSeconds(document.getElementById('bp-from').value),
+    to_time: toUnixSeconds(document.getElementById('bp-to').value),
+    fee_pct: numOrUndefined(document.getElementById('bp-fee_pct').value),
+    trigger_price: triggerPriceRaw === '' ? null : Number(triggerPriceRaw),
+    is_manual: false,
+    num_levels: numOrUndefined(document.getElementById('bp-num_levels').value),
+    base_price: numOrUndefined(document.getElementById('bp-base_price').value),
+    base_amount_usdt: numOrUndefined(document.getElementById('bp-base_amount_usdt').value),
+    price_step_pct: numOrUndefined(document.getElementById('bp-price_step_pct').value),
+    amount_step_pct: numOrUndefined(document.getElementById('bp-amount_step_pct').value),
+    take_profit_base_pct: numOrUndefined(document.getElementById('bp-take_profit_base_pct').value),
+    take_profit_step_pct: numOrUndefined(document.getElementById('bp-take_profit_step_pct').value),
+  };
+
+  const submitBtn = backtestPctForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const result = await api('/backtests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    hideBacktestPctForm();
+    await showBacktestDetail(result.id);
+  } catch (err) {
+    backtestPctError.textContent = err.message;
+    backtestPctError.hidden = false;
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function handleBacktestManualSubmit(event) {
+  event.preventDefault();
+  backtestManualError.hidden = true;
+
+  const triggerPriceRaw = document.getElementById('bm-trigger_price').value;
+  const rows = [...backtestManualRowsTbody.querySelectorAll('tr')];
+  const levels = rows.map((row) => ({
+    target_price: Number(row.querySelector('.bm-buy-price').value),
+    amount_usdt: Number(row.querySelector('.bm-amount').value),
+    sell_price: Number(row.querySelector('.bm-sell-price').value),
+  }));
+
+  const payload = {
+    symbol: document.getElementById('bm-symbol').value.trim().toUpperCase(),
+    interval: document.getElementById('bm-interval').value,
+    from_time: toUnixSeconds(document.getElementById('bm-from').value),
+    to_time: toUnixSeconds(document.getElementById('bm-to').value),
+    fee_pct: numOrUndefined(document.getElementById('bm-fee_pct').value),
+    trigger_price: triggerPriceRaw === '' ? null : Number(triggerPriceRaw),
+    is_manual: true,
+    levels,
+  };
+
+  const submitBtn = backtestManualForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const result = await api('/backtests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    hideBacktestManualForm();
+    await showBacktestDetail(result.id);
+  } catch (err) {
+    backtestManualError.textContent = err.message;
+    backtestManualError.hidden = false;
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+backtestBtn.addEventListener('click', showBacktestView);
+backtestBackBtn.addEventListener('click', hideBacktestView);
+backtestDetailBackBtn.addEventListener('click', hideBacktestDetailView);
+document.getElementById('refresh-backtests-btn').addEventListener('click', loadBacktestList);
+
+newBacktestPctBtn.addEventListener('click', showBacktestPctForm);
+cancelBacktestPctBtn.addEventListener('click', hideBacktestPctForm);
+backtestPctForm.addEventListener('submit', handleBacktestPctSubmit);
+
+newBacktestManualBtn.addEventListener('click', showBacktestManualForm);
+cancelBacktestManualBtn.addEventListener('click', hideBacktestManualForm);
+backtestManualForm.addEventListener('submit', handleBacktestManualSubmit);
+backtestManualAddRowBtn.addEventListener('click', addBacktestManualRow);
 
 function loadTradingViewScript() {
   return new Promise((resolve, reject) => {

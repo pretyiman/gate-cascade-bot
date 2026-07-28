@@ -16,6 +16,7 @@ const {
   editPlacedLevel,
   editSellPrice,
 } = require('./cascadeEngine');
+const { runBacktest, listBacktests, getBacktest, deleteBacktest } = require('./backtestEngine');
 const gateClient = require('./gateClient');
 const { normalizeSymbol } = require('./symbol');
 const { encrypt, decrypt } = require('./secretsCrypto');
@@ -450,6 +451,56 @@ function buildApp() {
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  // Backtests: replay a proposed cascade config against real historical Gate.io
+  // candles. No API key needed (public candlestick data only) - available to
+  // every user, not admin-gated. Save-on-run: every run is persisted so it
+  // shows up in the history list, deletable from there.
+  app.post('/backtests', async (req, res) => {
+    const body = req.body || {};
+    try {
+      const config = {
+        symbol: normalizeSymbol(body.symbol),
+        interval: body.interval,
+        from_time: Number(body.from_time),
+        to_time: Number(body.to_time),
+        fee_pct: body.fee_pct !== undefined ? Number(body.fee_pct) : undefined,
+        trigger_price: body.trigger_price ? Number(body.trigger_price) : null,
+        is_manual: !!body.is_manual,
+      };
+      if (body.is_manual) {
+        config.levels = body.levels;
+      } else {
+        config.base_price = Number(body.base_price);
+        config.base_amount_usdt = Number(body.base_amount_usdt);
+        config.price_step_pct = Number(body.price_step_pct);
+        config.amount_step_pct = Number(body.amount_step_pct);
+        config.num_levels = Number(body.num_levels);
+        config.take_profit_base_pct = Number(body.take_profit_base_pct);
+        config.take_profit_step_pct = Number(body.take_profit_step_pct);
+      }
+      const result = await runBacktest(req.user.id, config);
+      res.status(201).json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/backtests', (req, res) => {
+    res.json(listBacktests(req.user.id));
+  });
+
+  app.get('/backtests/:id', (req, res) => {
+    const backtest = getBacktest(req.user.id, req.params.id);
+    if (!backtest) return res.status(404).json({ error: 'Not found' });
+    res.json(backtest);
+  });
+
+  app.delete('/backtests/:id', (req, res) => {
+    const ok = deleteBacktest(req.user.id, req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Not found' });
+    res.json({ deleted: true });
   });
 
   return app;
